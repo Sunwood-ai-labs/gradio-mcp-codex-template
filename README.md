@@ -136,3 +136,9 @@ Spaces で公開したサーバーを **MCP クライアント（Claude Desktop 
 
 ## 📝 ライセンス
 MIT
+
+## Memo
+
+```bash
+codex -a --full-auto -m o3 "まずは codex-rules.md を確認して、その後、gMaL.md を参考にして、app.py で色々なパターンのおみくじアプリ Gradio MCPを作成して"
+```
