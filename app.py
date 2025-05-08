@@ -1,107 +1,233 @@
-import numpy as np
+"""app.py — Gradio MCP: Omikuji (Fortune) App
+
+This Gradio application exposes several "omikuji" (fortune-telling) tools as both a
+visual web UI (tabbed) and Model Context Protocol (MCP) SSE endpoints. Each tool is
+implemented as a standalone Python function with a rich docstring so that Gradio
+can automatically generate a JSON schema for MCP clients (Claude Desktop, Cline,
+etc.).
+
+Patterns implemented
+--------------------
+1. draw_omikuji_basic
+   └─ Returns a single traditional Japanese fortune such as "大吉", "凶" …
+
+2. draw_omikuji_lucky_item
+   └─ Adds a random lucky item (財布, 植物, …) to the basic fortune.
+
+3. draw_omikuji_lucky_color_number
+   └─ Adds a lucky colour (赤, 青 …) *and* lucky number (1-99).
+
+4. draw_omikuji_full
+   └─ Gives a comprehensive result (overall/love/money/health fortunes, lucky
+      colour, item and number).  Optional `name` input personalises the message.
+
+Running
+-------
+```
+uv venv            # optional: create virtual-env with uv (or use pip)
+source .venv/bin/activate
+uv pip install -r requirements.txt
+
+python app.py      # UI http://127.0.0.1:7860/
+                  # SSE http://127.0.0.1:7860/gradio_api/mcp/sse
+```
+"""
+
+from __future__ import annotations
+
+import random
+from typing import Dict
+
 import gradio as gr
-import qrcode
-from PIL import Image
-import io  # Added for parity with user-provided snippet (currently unused)
+
+# ---------------------------------------------------------------------------
+# 🎴 Omikuji base data
+# ---------------------------------------------------------------------------
+
+FORTUNES = [
+    "大吉",  # Excellent luck
+    "中吉",  # Good luck
+    "小吉",  # Little luck
+    "吉",    # Luck
+    "末吉",  # Future luck
+    "凶",    # Bad luck
+    "大凶",  # Terrible luck
+]
+
+LUCKY_ITEMS = [
+    "財布",
+    "スマホ",
+    "手帳",
+    "時計",
+    "本",
+    "鉛筆",
+    "植物",
+    "マグカップ",
+    "イヤホン",
+    "傘",
+]
+
+LUCKY_COLORS = [
+    "赤",
+    "青",
+    "緑",
+    "黄色",
+    "紫",
+    "オレンジ",
+    "ピンク",
+    "白",
+    "黒",
+    "金",
+]
 
 
-def reverse_text(text):
+# ---------------------------------------------------------------------------
+# 🔮 Omikuji functions (MCP tools)
+# ---------------------------------------------------------------------------
+
+
+def draw_omikuji_basic() -> str:
+    """Draw a single omikuji fortune.
+
+    Returns
+    -------
+    str
+        A traditional Japanese fortune string such as "大吉" (excellent luck)
+        or "凶" (bad luck).
     """
-    テキストを反転する。
 
-    Args:
-        text (str): 反転したいテキスト。
+    return random.choice(FORTUNES)
 
-    Returns:
-        str: 反転されたテキスト。
+
+def draw_omikuji_lucky_item() -> str:
+    """Draw an omikuji fortune **with a lucky item**.
+
+    Returns
+    -------
+    str
+        A sentence combining the fortune and a randomly chosen lucky item.
+        Example: "中吉 — 今日のラッキーアイテムは『時計』！".
     """
-    return text[::-1]
+
+    fortune = random.choice(FORTUNES)
+    item = random.choice(LUCKY_ITEMS)
+    return f"{fortune} — 今日のラッキーアイテムは『{item}』！"
 
 
-def generate_qr_code(text):
+def draw_omikuji_lucky_color_number() -> str:
+    """Draw an omikuji fortune **with lucky colour & number**.
+
+    Returns
+    -------
+    str
+        A formatted string that includes:
+        - Fortune (大吉, …)
+        - Lucky colour (赤, 青, …)
+        - Lucky number (1–99)
     """
-    テキストからQRコードを生成する。
 
-    Args:
-        text (str): QRコードに埋め込むテキスト。
+    fortune = random.choice(FORTUNES)
+    color = random.choice(LUCKY_COLORS)
+    number = random.randint(1, 99)
+    return f"{fortune} — ラッキーカラー: {color} / ラッキーナンバー: {number}"
 
-    Returns:
-        numpy.ndarray: 生成されたQRコード画像 (RGB)。
+
+def draw_omikuji_full(name: str | None = None) -> Dict[str, str]:
+    """Comprehensive omikuji result.
+
+    Parameters
+    ----------
+    name : str | None, optional
+        User's name.  When provided the message becomes personalised.
+
+    Returns
+    -------
+    dict of str
+        Keys: "overall", "love", "money", "health", "lucky_color",
+        "lucky_item", "lucky_number".
+
+    Notes
+    -----
+    This function returns a dict so that MCP clients receive structured JSON.
+    In the Gradio UI the dictionary is rendered nicely as a JSON viewer.
     """
-    qr = qrcode.QRCode(version=5, box_size=10, border=5)
-    qr.add_data(text)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
 
-    # PILイメージをNumPy配列に変換
-    img_array = np.array(img.convert("RGB"))
-    return img_array
+    overall = random.choice(FORTUNES)
 
+    # Sub-category fortunes use a biased list (no 大凶) to avoid discouragement
+    sub_fortunes = FORTUNES[:-1]  # remove 大凶
+    love = random.choice(sub_fortunes)
+    money = random.choice(sub_fortunes)
+    health = random.choice(sub_fortunes)
 
-def count_words(text):
-    """
-    テキストの単語数をカウントする。
-
-    Args:
-        text (str): カウントしたいテキスト。
-
-    Returns:
-        int: 単語数。
-    """
-    if not text.strip():
-        return 0
-    return len(text.split())
+    return {
+        "name": name or "あなた",
+        "overall": overall,
+        "love": love,
+        "money": money,
+        "health": health,
+        "lucky_color": random.choice(LUCKY_COLORS),
+        "lucky_item": random.choice(LUCKY_ITEMS),
+        "lucky_number": str(random.randint(1, 99)),
+    }
 
 
-def resize_image(image, width, height):
-    """
-    画像をリサイズする。
+# ---------------------------------------------------------------------------
+# 🖼️  Gradio UI — TabbedInterface
+# ---------------------------------------------------------------------------
 
-    Args:
-        image (numpy.ndarray): リサイズしたい画像。
-        width (int): 新しい幅。
-        height (int): 新しい高さ。
+# Each tool is mapped to a separate Interface for clarity.  The outputs are
+# chosen so that both web UI and MCP behave nicely.
 
-    Returns:
-        numpy.ndarray: リサイズされた画像 (RGB)。
-    """
-    # NumPy配列からPILイメージに変換
-    pil_image = Image.fromarray(image)
+iface_basic = gr.Interface(
+    fn=draw_omikuji_basic,
+    inputs=[],  # no user input
+    outputs=gr.Textbox(label="結果"),
+    api_name="draw_omikuji_basic",
+    description="最もシンプルな伝統おみくじです。クリックするだけで運勢が表示されます。",
+)
 
-    resized_image = pil_image.resize((int(width), int(height)))
-    return np.array(resized_image)
-
-
-# --- Interface -----------------------------------------------------------
-
-resize_interface = gr.Interface(
-    fn=resize_image,
-    inputs=[
-        gr.Image(),
-        gr.Number(label="幅", value=300),
-        gr.Number(label="高さ", value=300),
-    ],
-    outputs=gr.Image(),
-    api_name="resize_image",
+iface_item = gr.Interface(
+    fn=draw_omikuji_lucky_item,
+    inputs=[],
+    outputs=gr.Textbox(label="結果"),
+    api_name="draw_omikuji_lucky_item",
+    description="運勢に加えてラッキーアイテムを教えてくれるおみくじです。",
 )
 
 
+iface_color_number = gr.Interface(
+    fn=draw_omikuji_lucky_color_number,
+    inputs=[],
+    outputs=gr.Textbox(label="結果"),
+    api_name="draw_omikuji_lucky_color_number",
+    description="運勢＋ラッキーカラー＆ナンバーのおみくじです。",
+)
+
+
+iface_full = gr.Interface(
+    fn=draw_omikuji_full,
+    inputs=[gr.Textbox(label="名前（任意）", placeholder="入力しなくてもOK")],
+    outputs=gr.JSON(label="総合結果"),
+    api_name="draw_omikuji_full",
+    description="総合運・恋愛運・金運・健康運とラッキー情報を一度に表示します。",
+)
+
+
+# Combine into tabs
 demo = gr.TabbedInterface(
-    [
-        gr.Interface(reverse_text, gr.Textbox(), gr.Textbox(), api_name="reverse_text"),
-        gr.Interface(generate_qr_code, gr.Textbox(), gr.Image(), api_name="generate_qr_code"),
-        gr.Interface(count_words, gr.Textbox(), gr.Number(), api_name="count_words"),
-        resize_interface,
-    ],
-    [
-        "テキスト反転",
-        "QRコード生成",
-        "単語数カウント",
-        "画像リサイズ",
+    interface_list=[iface_basic, iface_item, iface_color_number, iface_full],
+    tab_names=[
+        "シンプルおみくじ",
+        "アイテム付きおみくじ",
+        "カラー＆ナンバーおみくじ",
+        "総合おみくじ",
     ],
 )
 
 
 if __name__ == "__main__":
-    # mcp_server=True starts the SSE endpoint at /gradio_api/mcp/sse
+    # `mcp_server=True` exposes the functions to SSE clients at
+    # /gradio_api/mcp/sse.  Passing `share=True` is optional here but useful for
+    # quickly sharing the demo.
     demo.launch(mcp_server=True)
